@@ -19,6 +19,9 @@ import umap.umap_ as umap
 from sklearn.cluster import KMeans
 from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
+from tensorflow.keras.utils import plot_model
+from IPython.display import Image, display
+import os
 
 
 def show_side_by_side(plot_functions, titles=None, figsize=(5, 4)):
@@ -770,3 +773,29 @@ def fit_kmeans_on_means(df, n_clusters=6, random_state=42):
     labels = kmeans.fit_predict(X)
     centroids = pd.DataFrame(kmeans.cluster_centers_, columns=Xf.columns, index=[f"c{i}" for i in range(n_clusters)])
     return kmeans, None, labels, centroids
+
+def visualize_model(model, filename="model.png", show_shapes=True, expand_nested=True, dpi=96, inline=True):
+  """
+  Visualizes a Keras model architecture.
+
+  Args:
+      model: Keras model instance to visualize.
+      filename (str): Output file name (supports .png, .svg, .pdf).
+      show_shapes (bool): Whether to display layer shapes in the diagram.
+      expand_nested (bool): Whether to expand nested models.
+      dpi (int): Dots per inch (resolution) for the saved diagram.
+      inline (bool): If True, displays diagram inline (works in Jupyter).
+  """
+  # Create the diagram file
+  plot_model(
+      model,
+      to_file=filename,
+      show_shapes=show_shapes,
+      show_layer_names=True,
+      expand_nested=expand_nested,
+      dpi=dpi
+  )
+
+  # Display inline if requested and running in Jupyter
+  if inline and os.path.exists(filename):
+      display(Image(filename=filename))
