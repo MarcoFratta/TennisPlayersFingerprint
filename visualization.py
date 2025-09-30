@@ -774,20 +774,32 @@ def fit_kmeans_on_means(df, n_clusters=6, random_state=42):
     centroids = pd.DataFrame(kmeans.cluster_centers_, columns=Xf.columns, index=[f"c{i}" for i in range(n_clusters)])
     return kmeans, None, labels, centroids
     
-def create_dynamic_cluster_to_style_mapping(df, model, id_to_name, scaler=None):
+def create_dynamic_cluster_to_style_mapping(df, model, id_to_name, scaler=None, reference_players=None):
     """
     Create cluster-to-style mapping based on reference players.
     Finds which cluster contains each reference player and assigns the appropriate style.
+    
+    Args:
+        df: DataFrame with player data
+        model: Fitted clustering model
+        id_to_name: Dictionary mapping player IDs to names
+        scaler: Optional scaler for features
+        reference_players: Dictionary mapping style names to reference player names.
+            If None, uses default reference players.
+    
+    Returns:
+        Dictionary mapping cluster IDs to style names
     """
-    # Define reference players for each tennis style
-    reference_players = {
-        "Serve and Volley": "John Mcenroe",
-        "Big Server": "John Isner", 
-        "All Court Player": "Lleyton Hewitt",
-        "Attacking Baseliner": "Carlos Alcaraz",
-        "Solid Baseliner": "Jannik Sinner",
-        "Counter Puncher": "Alexander Zverev"
-    }
+    # Default reference players if none provided
+    if reference_players is None:
+        reference_players = {
+            "Serve and Volley": "John Mcenroe",
+            "Big Server": "John Isner", 
+            "All Court Player": "Stan Wawrinka",
+            "Attacking Baseliner": "Carlos Alcaraz",
+            "Solid Baseliner": "Novak Djokovic",
+            "Counter Puncher": "Lleyton Hewitt"
+        }
     
     # Get cluster members
     members = get_cluster_members(df, model, id_to_name, scaler)
@@ -824,6 +836,7 @@ def create_dynamic_cluster_to_style_mapping(df, model, id_to_name, scaler=None):
         print(f"Warning: Styles not mapped: {unmapped_styles}")
     
     return cluster_to_style
+
     
 def visualize_model(model, filename="model.png", show_shapes=True, expand_nested=True, dpi=96, inline=True):
   """
