@@ -782,11 +782,11 @@ def create_dynamic_cluster_to_style_mapping(df, model, id_to_name, scaler=None):
     # Define reference players for each tennis style
     reference_players = {
         "Serve and Volley": "John Mcenroe",
-        "Big Server": "John Inser", 
+        "Big Server": "John Isner", 
         "All Court Player": "Roger Federer",
         "Attacking Baseliner": "Carlos Alcaraz",
         "Solid Baseliner": "Novak Djokovic",
-        "Counter Puncher": "Rafael Nadal"
+        "Counter Puncher": "Daniil Medvedev"
     }
     
     # Get cluster members
