@@ -773,7 +773,58 @@ def fit_kmeans_on_means(df, n_clusters=6, random_state=42):
     labels = kmeans.fit_predict(X)
     centroids = pd.DataFrame(kmeans.cluster_centers_, columns=Xf.columns, index=[f"c{i}" for i in range(n_clusters)])
     return kmeans, None, labels, centroids
-
+    
+def create_dynamic_cluster_to_style_mapping(df, model, id_to_name, scaler=None):
+    """
+    Create cluster-to-style mapping based on reference players.
+    Finds which cluster contains each reference player and assigns the appropriate style.
+    """
+    # Define reference players for each tennis style
+    reference_players = {
+        "Serve and Volley": "John Mcenroe",
+        "Big Server": "John Inser", 
+        "All Court Player": "Roger Federer",
+        "Attacking Baseliner": "Carlos Alcaraz",
+        "Solid Baseliner": "Novak Djokovic",
+        "Counter Puncher": "Rafael Nadal"
+    }
+    
+    # Get cluster members
+    members = get_cluster_members(df, model, id_to_name, scaler)
+    
+    # Create reverse mapping: player name -> cluster number
+    player_to_cluster = {}
+    for cluster_id, player_list in members.items():
+        for player in player_list:
+            player_to_cluster[player] = cluster_id
+    
+    # Map each style to its cluster based on reference player
+    cluster_to_style = {}
+    unmapped_styles = []
+    
+    for style, ref_player in reference_players.items():
+        if ref_player in player_to_cluster:
+            cluster_id = player_to_cluster[ref_player]
+            cluster_to_style[cluster_id] = style
+            print(f"Style '{style}' assigned to Cluster {cluster_id} (reference: {ref_player})")
+        else:
+            unmapped_styles.append(style)
+            print(f"Warning: Reference player '{ref_player}' for style '{style}' not found in clusters")
+    
+    # Handle any clusters that weren't mapped
+    all_clusters = set(members.keys())
+    mapped_clusters = set(cluster_to_style.keys())
+    unmapped_clusters = all_clusters - mapped_clusters
+    
+    for cluster_id in unmapped_clusters:
+        cluster_to_style[cluster_id] = f"Unknown Style {cluster_id}"
+        print(f"Warning: Cluster {cluster_id} not mapped to any style")
+    
+    if unmapped_styles:
+        print(f"Warning: Styles not mapped: {unmapped_styles}")
+    
+    return cluster_to_style
+    
 def visualize_model(model, filename="model.png", show_shapes=True, expand_nested=True, dpi=96, inline=True):
   """
   Visualizes a Keras model architecture.
