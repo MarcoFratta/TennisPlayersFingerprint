@@ -509,15 +509,15 @@ def cluster_with_models(latent_df, mapper, k, random_state=42):
         random_state: Random seed for reproducibility
     """
     # Example with GMM
-    gmm = GaussianMixture(n_components=k, random_state=42)
+    gmm = GaussianMixture(n_components=k, random_state=random_state)
     gmm.fit(latent_df.drop(columns='player'))
-    fig_gmm = visualize_cluster_regions(gmm, latent_df, mapper, plot_3d=True)
+    fig_gmm = visualize_cluster_regions(gmm, latent_df, mapper, plot_3d=True, random_state=random_state)
     fig_gmm.show()
 
     # Example with KMeans
-    kmeans = KMeans(n_clusters=k, random_state=42)
+    kmeans = KMeans(n_clusters=k, random_state=random_state)
     kmeans.fit(latent_df.drop(columns='player'))
-    fig_kmeans = visualize_cluster_regions(kmeans, latent_df, mapper, plot_3d=True)
+    fig_kmeans = visualize_cluster_regions(kmeans, latent_df, mapper, plot_3d=True, random_state=random_state)
     fig_kmeans.show()
 
 
