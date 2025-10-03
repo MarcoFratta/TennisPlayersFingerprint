@@ -250,16 +250,16 @@ def find_optimal_k(latent_df, k_range=range(2, 21), init_method='k-means++', n_i
     # Create metrics DataFrame
     metrics_df = pd.DataFrame({
         'k': list(k_range),
-        'silhouette_score': silhouette_scores,
-        'davies_bouldin_score': dbi_scores,
-        'calinski_harabasz_score': ch_scores,
+        'Silhouette': silhouette_scores,
+        'Davies-Bouldin': dbi_scores,
+        'Calinski-Harabasz': ch_scores,
         'inertia': inertias
     })
     
     # Find best k values
-    best_k_silhouette = metrics_df.loc[metrics_df['silhouette_score'].idxmax(), 'k']
-    best_k_davies_bouldin = metrics_df.loc[metrics_df['davies_bouldin_score'].idxmin(), 'k']
-    best_k_calinski_harabasz = metrics_df.loc[metrics_df['calinski_harabasz_score'].idxmax(), 'k']
+    best_k_silhouette = metrics_df.loc[metrics_df['Silhouette'].idxmax(), 'k']
+    best_k_davies_bouldin = metrics_df.loc[metrics_df['Davies-Bouldin'].idxmin(), 'k']
+    best_k_calinski_harabasz = metrics_df.loc[metrics_df['Calinski-Harabasz'].idxmax(), 'k']
     
     return {
         'metrics_df': metrics_df,
