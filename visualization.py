@@ -177,42 +177,14 @@ def plot_latent_space(latent_df, player_names_map, dataset_name="Dataset"):
       plot_pca_3d(latent_df, player_names_map, dataset_name)
 
 
-def cluster_with_metrics(latent_df, k_range=range(2, 50), random_state=42):
+def plot_clustering_metrics(metrics_df, title="Clustering Metrics"):
     """
-    Cluster latent space features with K-means and evaluate using multiple metrics.
-
-    Args:
-        latent_df: DataFrame with latent space features (numeric columns only)
-        k_range: range of k values to test
-        random_state: random seed for reproducibility
-
-    Returns:
-        metrics_df: DataFrame with scores for each k
-    """
-    from sklearn.metrics import silhouette_score, davies_bouldin_score, calinski_harabasz_score
+    Plot clustering metrics from a pre-computed metrics DataFrame.
     
-    X = latent_df.values  # ensure it's numeric
-    silhouette_scores = []
-    dbi_scores = []
-    ch_scores = []
-
-    for k in k_range:
-        kmeans = KMeans(n_clusters=k, random_state=random_state)
-        labels = kmeans.fit_predict(X)
-
-        silhouette_scores.append(silhouette_score(X, labels))
-        dbi_scores.append(davies_bouldin_score(X, labels))
-        ch_scores.append(calinski_harabasz_score(X, labels))
-
-    # Store metrics
-    metrics_df = pd.DataFrame({
-        'k': list(k_range),
-        'Silhouette': silhouette_scores,
-        'Davies-Bouldin': dbi_scores,
-        'Calinski-Harabasz': ch_scores
-    })
-
-    # Plot metrics
+    Args:
+        metrics_df: DataFrame with columns 'k', 'Silhouette', 'Davies-Bouldin', 'Calinski-Harabasz'
+        title: Title for the plot
+    """
     fig, axs = plt.subplots(1, 3, figsize=(15, 4))
 
     axs[0].plot(metrics_df['k'], metrics_df['Silhouette'], marker='o')
@@ -230,38 +202,41 @@ def cluster_with_metrics(latent_df, k_range=range(2, 50), random_state=42):
     axs[2].set_xlabel('Number of Clusters (k)')
     axs[2].set_ylabel('Score')
 
+    plt.suptitle(title)
     plt.tight_layout()
     plt.show()
 
-    return metrics_df
 
-
-def visualize_clustering(
+def visualize_clustering_with_models(
     latent_df,
-    k_list,
+    fitted_models_dict,
     player_names_map=None,
     player_col='player',
     reducer='umap',  # 'pca', 'tsne', or 'umap'
     random_state=42,
-    dataset_name="Dataset"
+    dataset_name="Dataset",
+    show_2d=True,
+    show_3d=True
 ):
     """
-    For each k in k_list, runs KMeans on latent_df and visualizes the clusters
-    in interactive 3D plot after dimensionality reduction using PCA, t-SNE, or UMAP.
-
+    Visualize clustering using pre-fitted models (no fitting allowed).
+    Shows both 2D and 3D plots by default.
+    
     Args:
         latent_df (pd.DataFrame): Latent features with optional player column.
-        k_list (list[int]): List of cluster counts to try.
+        fitted_models_dict (dict): Dictionary with k as keys and fitted models as values.
         player_names_map (dict): Dictionary mapping player IDs back to names (optional).
         player_col (str): Column containing player IDs/names in latent_df.
         reducer (str): Dimensionality reduction method ('pca', 'tsne', or 'umap').
         random_state (int): Random seed for reproducibility.
         dataset_name (str): Name of the dataset for plot titles.
+        show_2d (bool): Whether to show 2D plots.
+        show_3d (bool): Whether to show 3D plots.
 
     Returns:
         None
     """
-    print(f"\n=== Visualizing KMeans clusters for {dataset_name} using {reducer.upper()} (3D Interactive) ===")
+    print(f"\n=== Visualizing clusters for {dataset_name} using {reducer.upper()} ===")
 
     # Separate features and players
     if player_col in latent_df.columns:
@@ -271,60 +246,114 @@ def visualize_clustering(
         players = None
         features = latent_df
 
-    # Dimensionality reduction to 3D
+    # Dimensionality reduction to 3D (for both 2D and 3D plots)
     if reducer == 'pca':
-        reducer_model = PCA(n_components=3, random_state=random_state)
-        reduced_features = reducer_model.fit_transform(features)
+        reducer_model_3d = PCA(n_components=3, random_state=random_state)
+        reduced_features_3d = reducer_model_3d.fit_transform(features)
+        if show_2d:
+            reducer_model_2d = PCA(n_components=2, random_state=random_state)
+            reduced_features_2d = reducer_model_2d.fit_transform(features)
     elif reducer == 'tsne':
-        reducer_model = TSNE(n_components=3, random_state=random_state, perplexity=30, n_iter=300)
-        reduced_features = reducer_model.fit_transform(features)
+        reducer_model_3d = TSNE(n_components=3, random_state=random_state, perplexity=30, n_iter=300)
+        reduced_features_3d = reducer_model_3d.fit_transform(features)
+        if show_2d:
+            reducer_model_2d = TSNE(n_components=2, random_state=random_state, perplexity=30, n_iter=300)
+            reduced_features_2d = reducer_model_2d.fit_transform(features)
     elif reducer == 'umap':
-        reducer_model = umap.UMAP(n_components=3, random_state=random_state, n_neighbors=15, min_dist=0.1)
-        reduced_features = reducer_model.fit_transform(features)
+        reducer_model_3d = umap.UMAP(n_components=3, random_state=random_state, n_neighbors=15, min_dist=0.1)
+        reduced_features_3d = reducer_model_3d.fit_transform(features)
+        if show_2d:
+            reducer_model_2d = umap.UMAP(n_components=2, random_state=random_state, n_neighbors=15, min_dist=0.1)
+            reduced_features_2d = reducer_model_2d.fit_transform(features)
     else:
         raise ValueError("Reducer must be 'pca', 'tsne', or 'umap'.")
 
-    # Prepare DataFrame for plotly
-    plot_df = pd.DataFrame({
-        'Dim1': reduced_features[:, 0],
-        'Dim2': reduced_features[:, 1],
-        'Dim3': reduced_features[:, 2],
+    # Prepare DataFrames for plotly
+    plot_df_3d = pd.DataFrame({
+        'Dim1': reduced_features_3d[:, 0],
+        'Dim2': reduced_features_3d[:, 1],
+        'Dim3': reduced_features_3d[:, 2],
     })
+    
+    if show_2d:
+        plot_df_2d = pd.DataFrame({
+            'Dim1': reduced_features_2d[:, 0],
+            'Dim2': reduced_features_2d[:, 1],
+        })
 
     if players is not None:
-        plot_df[player_col] = players
+        plot_df_3d[player_col] = players
+        if show_2d:
+            plot_df_2d[player_col] = players
         if player_names_map is not None:
-            plot_df['player_name'] = plot_df[player_col].map(player_names_map)
+            plot_df_3d['player_name'] = plot_df_3d[player_col].map(player_names_map)
+            if show_2d:
+                plot_df_2d['player_name'] = plot_df_2d[player_col].map(player_names_map)
         else:
-            plot_df['player_name'] = plot_df[player_col].astype(str)
+            plot_df_3d['player_name'] = plot_df_3d[player_col].astype(str)
+            if show_2d:
+                plot_df_2d['player_name'] = plot_df_2d[player_col].astype(str)
     else:
-        plot_df['player_name'] = "Unknown"
+        plot_df_3d['player_name'] = "Unknown"
+        if show_2d:
+            plot_df_2d['player_name'] = "Unknown"
 
-    for k in k_list:
-        print(f"\n--- KMeans clustering with k={k} ---")
-        kmeans = KMeans(n_clusters=k, random_state=random_state)
-        print(f'clustering on {features.shape} shape df' )
-        cluster_labels = kmeans.fit_predict(features)
-        plot_df['cluster'] = cluster_labels.astype(str)  # convert to str for categorical coloring
+    for k, model in fitted_models_dict.items():
+        print(f"\n--- Visualizing clusters with k={k} ---")
+        
+        # Get cluster labels from pre-fitted model
+        if hasattr(model, 'labels_'):
+            cluster_labels = model.labels_
+        elif hasattr(model, 'predict'):
+            cluster_labels = model.predict(features)
+        else:
+            raise ValueError(f"Model for k={k} does not have 'labels_' or 'predict' method")
+        
+        plot_df_3d['cluster'] = cluster_labels.astype(str)
+        if show_2d:
+            plot_df_2d['cluster'] = cluster_labels.astype(str)
 
-        fig = px.scatter_3d(
-            plot_df,
-            x='Dim1', y='Dim2', z='Dim3',
-            color='cluster',
-            hover_name='player_name',
-            title=f"KMeans Clusters (k={k}) using {reducer.upper()} for {dataset_name}",
-            color_discrete_sequence=px.colors.qualitative.Safe,
-            opacity=0.8,
-            width=1200,
-            height=600
-        )
+        # Create 2D plot
+        if show_2d:
+            fig_2d = px.scatter(
+                plot_df_2d,
+                x='Dim1', y='Dim2',
+                color='cluster',
+                hover_name='player_name',
+                title=f"2D Clusters (k={k}) using {reducer.upper()} for {dataset_name}",
+                color_discrete_sequence=px.colors.qualitative.Safe,
+                opacity=0.8,
+                width=800,
+                height=600
+            )
 
-        fig.update_layout(
-            legend_title_text='Cluster',
-            margin=dict(l=0, r=0, b=0, t=40)
-        )
+            fig_2d.update_layout(
+                legend_title_text='Cluster',
+                margin=dict(l=0, r=0, b=0, t=40)
+            )
 
-        fig.show()
+            fig_2d.show()
+
+        # Create 3D plot
+        if show_3d:
+            fig_3d = px.scatter_3d(
+                plot_df_3d,
+                x='Dim1', y='Dim2', z='Dim3',
+                color='cluster',
+                hover_name='player_name',
+                title=f"3D Clusters (k={k}) using {reducer.upper()} for {dataset_name}",
+                color_discrete_sequence=px.colors.qualitative.Safe,
+                opacity=0.8,
+                width=1200,
+                height=600
+            )
+
+            fig_3d.update_layout(
+                legend_title_text='Cluster',
+                margin=dict(l=0, r=0, b=0, t=40)
+            )
+
+            fig_3d.show()
 
         # Print cluster stats
         unique_labels, counts = np.unique(cluster_labels, return_counts=True)
@@ -338,6 +367,80 @@ def visualize_clustering(
                 sample_players_ids = players[cluster_labels == c].tolist()
                 sample_players_names = [player_names_map.get(pid, f"ID_{pid}") for pid in sample_players_ids]
                 print(f"Cluster {c}: {sample_players_names}")
+
+
+def visualize_clustering_2d_only(
+    latent_df,
+    fitted_models_dict,
+    player_names_map=None,
+    player_col='player',
+    reducer='umap',
+    random_state=42,
+    dataset_name="Dataset"
+):
+    """
+    Visualize clustering using pre-fitted models in 2D only.
+    
+    Args:
+        latent_df (pd.DataFrame): Latent features with optional player column.
+        fitted_models_dict (dict): Dictionary with k as keys and fitted models as values.
+        player_names_map (dict): Dictionary mapping player IDs back to names (optional).
+        player_col (str): Column containing player IDs/names in latent_df.
+        reducer (str): Dimensionality reduction method ('pca', 'tsne', or 'umap').
+        random_state (int): Random seed for reproducibility.
+        dataset_name (str): Name of the dataset for plot titles.
+
+    Returns:
+        None
+    """
+    visualize_clustering_with_models(
+        latent_df=latent_df,
+        fitted_models_dict=fitted_models_dict,
+        player_names_map=player_names_map,
+        player_col=player_col,
+        reducer=reducer,
+        random_state=random_state,
+        dataset_name=dataset_name,
+        show_2d=True,
+        show_3d=False
+    )
+
+
+def visualize_clustering_3d_only(
+    latent_df,
+    fitted_models_dict,
+    player_names_map=None,
+    player_col='player',
+    reducer='umap',
+    random_state=42,
+    dataset_name="Dataset"
+):
+    """
+    Visualize clustering using pre-fitted models in 3D only.
+    
+    Args:
+        latent_df (pd.DataFrame): Latent features with optional player column.
+        fitted_models_dict (dict): Dictionary with k as keys and fitted models as values.
+        player_names_map (dict): Dictionary mapping player IDs back to names (optional).
+        player_col (str): Column containing player IDs/names in latent_df.
+        reducer (str): Dimensionality reduction method ('pca', 'tsne', or 'umap').
+        random_state (int): Random seed for reproducibility.
+        dataset_name (str): Name of the dataset for plot titles.
+
+    Returns:
+        None
+    """
+    visualize_clustering_with_models(
+        latent_df=latent_df,
+        fitted_models_dict=fitted_models_dict,
+        player_names_map=player_names_map,
+        player_col=player_col,
+        reducer=reducer,
+        random_state=random_state,
+        dataset_name=dataset_name,
+        show_2d=False,
+        show_3d=True
+    )
 
 
 def visualize_cluster_regions(model, features_df, id_to_player, plot_3d=True, random_state=42):
@@ -498,27 +601,20 @@ def visualize_cluster_regions(model, features_df, id_to_player, plot_3d=True, ra
     return fig
 
 
-def cluster_with_models(latent_df, mapper, k, random_state=42):
+def compare_clustering_models(latent_df, fitted_models_dict, mapper, random_state=42):
     """
-    Cluster data using both GMM and KMeans and visualize the results.
+    Compare different clustering models using pre-fitted models (no fitting allowed).
 
     Args:
         latent_df: DataFrame with latent features
+        fitted_models_dict: Dictionary with model names as keys and fitted models as values
         mapper: Dictionary mapping player IDs to names
-        k: Number of clusters
         random_state: Random seed for reproducibility
     """
-    # Example with GMM
-    gmm = GaussianMixture(n_components=k, random_state=random_state)
-    gmm.fit(latent_df.drop(columns='player'))
-    fig_gmm = visualize_cluster_regions(gmm, latent_df, mapper, plot_3d=True, random_state=random_state)
-    fig_gmm.show()
-
-    # Example with KMeans
-    kmeans = KMeans(n_clusters=k, random_state=random_state)
-    kmeans.fit(latent_df.drop(columns='player'))
-    fig_kmeans = visualize_cluster_regions(kmeans, latent_df, mapper, plot_3d=True, random_state=random_state)
-    fig_kmeans.show()
+    for model_name, model in fitted_models_dict.items():
+        print(f"\n--- Visualizing {model_name} model ---")
+        fig = visualize_cluster_regions(model, latent_df, mapper, plot_3d=True, random_state=random_state)
+        fig.show()
 
 
 def plot_player_style_radar(player, df, model, id_to_name=None, cluster_to_style=None, styles_order=None, title=None):
@@ -755,24 +851,26 @@ def print_cluster_members(df, model, id_to_name, scaler=None):
         print(f"Cluster {c}: {members[c]}")
 
 
-def fit_kmeans_on_means(df, n_clusters=6, random_state=42):
+def get_cluster_centroids(model, feature_names):
     """
-    Fit KMeans on the means dataset and return model and centroids.
-
+    Get cluster centroids from a fitted model.
+    
     Args:
-        df: DataFrame with player data
-        n_clusters: Number of clusters
-        random_state: Random seed
-
+        model: Fitted clustering model
+        feature_names: List of feature names
+        
     Returns:
-        Tuple of (kmeans_model, None, labels, centroids)
+        DataFrame with centroids
     """
-    Xf = df.drop(columns=['player'], errors='ignore')
-    X = Xf.values
-    kmeans = KMeans(n_clusters=n_clusters, random_state=random_state)
-    labels = kmeans.fit_predict(X)
-    centroids = pd.DataFrame(kmeans.cluster_centers_, columns=Xf.columns, index=[f"c{i}" for i in range(n_clusters)])
-    return kmeans, None, labels, centroids
+    if hasattr(model, 'cluster_centers_'):
+        centroids = pd.DataFrame(
+            model.cluster_centers_, 
+            columns=feature_names,
+            index=[f"cluster_{i}" for i in range(len(model.cluster_centers_))]
+        )
+        return centroids
+    else:
+        raise ValueError("Model does not have cluster_centers_ attribute")
     
 def create_dynamic_cluster_to_style_mapping(df, model, id_to_name, scaler=None, reference_players=None):
     """
