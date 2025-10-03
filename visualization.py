@@ -871,6 +871,244 @@ def get_cluster_centroids(model, feature_names):
         return centroids
     else:
         raise ValueError("Model does not have cluster_centers_ attribute")
+
+
+def plot_silhouette_analysis(model, features, labels=None, dataset_name="Dataset", figsize=(15, 6)):
+    """
+    Create a silhouette analysis plot for a given clustering model.
+    
+    Args:
+        model: Fitted clustering model
+        features: Feature matrix used for clustering
+        labels: Cluster labels (if None, will be predicted from model)
+        dataset_name: Name for the plot title
+        figsize: Figure size tuple (width, height)
+        
+    Returns:
+        Dictionary with silhouette analysis results
+    """
+    from sklearn.metrics import silhouette_samples, silhouette_score
+    from sklearn.decomposition import PCA
+    import matplotlib.cm as cm
+    
+    # Get cluster labels if not provided
+    if labels is None:
+        if hasattr(model, 'labels_'):
+            labels = model.labels_
+        elif hasattr(model, 'predict'):
+            labels = model.predict(features)
+        else:
+            raise ValueError("Model must have 'labels_' or 'predict' method")
+    
+    # Get number of clusters
+    n_clusters = len(np.unique(labels))
+    
+    # Calculate silhouette scores
+    silhouette_avg = silhouette_score(features, labels)
+    sample_silhouette_values = silhouette_samples(features, labels)
+    
+    # Create the plot
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+    
+    # Plot 1: Silhouette plot
+    y_lower = 10
+    colors = cm.nipy_spectral(labels.astype(float) / n_clusters)
+    
+    for i in range(n_clusters):
+        # Aggregate the silhouette scores for samples belonging to cluster i
+        cluster_silhouette_values = sample_silhouette_values[labels == i]
+        cluster_silhouette_values.sort()
+        
+        size_cluster_i = cluster_silhouette_values.shape[0]
+        y_upper = y_lower + size_cluster_i
+        
+        color = cm.nipy_spectral(float(i) / n_clusters)
+        ax1.fill_betweenx(np.arange(y_lower, y_upper),
+                          0, cluster_silhouette_values,
+                          facecolor=color, edgecolor=color, alpha=0.7)
+        
+        # Label the silhouette plots with their cluster numbers at the middle
+        ax1.text(-0.05, y_lower + 0.5 * size_cluster_i, str(i))
+        
+        # Compute the new y_lower for next plot
+        y_lower = y_upper + 10  # 10 for the 0 samples
+    
+    ax1.set_xlabel("The silhouette coefficient values")
+    ax1.set_ylabel("Cluster label")
+    
+    # The vertical line for average silhouette score of all the values
+    ax1.axvline(x=silhouette_avg, color="red", linestyle="--")
+    ax1.set_yticks([])  # Clear the yaxis labels / ticks
+    ax1.set_xticks([-0.1, 0, 0.2, 0.4, 0.6, 0.8, 1])
+    
+    # Plot 2: The clustered data
+    # Reduce to 2D for visualization
+    if features.shape[1] > 2:
+        pca = PCA(n_components=2, random_state=42)
+        features_2d = pca.fit_transform(features)
+        x_label = f"1st principal component (explained variance: {pca.explained_variance_ratio_[0]:.2f})"
+        y_label = f"2nd principal component (explained variance: {pca.explained_variance_ratio_[1]:.2f})"
+    else:
+        features_2d = features
+        x_label = "Feature space for the 1st feature"
+        y_label = "Feature space for the 2nd feature"
+    
+    colors = cm.nipy_spectral(labels.astype(float) / n_clusters)
+    ax2.scatter(features_2d[:, 0], features_2d[:, 1], marker='.', s=30, lw=0, alpha=0.7,
+                c=colors, edgecolor='k')
+    
+    # Mark the centers
+    if hasattr(model, 'cluster_centers_'):
+        if features.shape[1] > 2:
+            centers_2d = pca.transform(model.cluster_centers_)
+        else:
+            centers_2d = model.cluster_centers_
+        
+        ax2.scatter(centers_2d[:, 0], centers_2d[:, 1], marker='o',
+                   c="white", alpha=1, s=200, edgecolor='k')
+        
+        for i, c in enumerate(centers_2d):
+            ax2.scatter(c[0], c[1], marker='$%d$' % i, alpha=1,
+                       s=50, edgecolor='k')
+    
+    ax2.set_xlabel(x_label)
+    ax2.set_ylabel(y_label)
+    
+    plt.suptitle(f"Silhouette analysis for KMeans clustering on {dataset_name} with n_clusters = {n_clusters}",
+                 fontsize=14, fontweight='bold')
+    
+    plt.tight_layout()
+    plt.show()
+    
+    # Print silhouette analysis summary
+    print(f"\nSilhouette Analysis Summary for {dataset_name}:")
+    print(f"Number of clusters: {n_clusters}")
+    print(f"Average silhouette score: {silhouette_avg:.3f}")
+    
+    # Print silhouette scores per cluster
+    for i in range(n_clusters):
+        cluster_silhouette_values = sample_silhouette_values[labels == i]
+        cluster_avg = np.mean(cluster_silhouette_values)
+        cluster_size = len(cluster_silhouette_values)
+        print(f"Cluster {i}: {cluster_size} samples, avg silhouette score: {cluster_avg:.3f}")
+    
+    return {
+        'silhouette_avg': silhouette_avg,
+        'sample_silhouette_values': sample_silhouette_values,
+        'n_clusters': n_clusters,
+        'cluster_sizes': [np.sum(labels == i) for i in range(n_clusters)]
+    }
+
+
+def plot_silhouette_comparison(models_dict, features, dataset_name="Dataset", figsize=(20, 12)):
+    """
+    Create silhouette analysis plots for multiple clustering models for comparison.
+    
+    Args:
+        models_dict: Dictionary with model names as keys and fitted models as values
+        features: Feature matrix used for clustering
+        dataset_name: Name for the plot title
+        figsize: Figure size tuple (width, height)
+        
+    Returns:
+        Dictionary with silhouette analysis results for each model
+    """
+    n_models = len(models_dict)
+    fig, axes = plt.subplots(2, n_models, figsize=figsize)
+    
+    if n_models == 1:
+        axes = axes.reshape(2, 1)
+    
+    results = {}
+    
+    for idx, (model_name, model) in enumerate(models_dict.items()):
+        # Get cluster labels
+        if hasattr(model, 'labels_'):
+            labels = model.labels_
+        elif hasattr(model, 'predict'):
+            labels = model.predict(features)
+        else:
+            raise ValueError(f"Model {model_name} must have 'labels_' or 'predict' method")
+        
+        n_clusters = len(np.unique(labels))
+        silhouette_avg = silhouette_score(features, labels)
+        sample_silhouette_values = silhouette_samples(features, labels)
+        
+        # Plot silhouette analysis
+        ax1 = axes[0, idx]
+        y_lower = 10
+        
+        for i in range(n_clusters):
+            cluster_silhouette_values = sample_silhouette_values[labels == i]
+            cluster_silhouette_values.sort()
+            
+            size_cluster_i = cluster_silhouette_values.shape[0]
+            y_upper = y_lower + size_cluster_i
+            
+            color = cm.nipy_spectral(float(i) / n_clusters)
+            ax1.fill_betweenx(np.arange(y_lower, y_upper),
+                              0, cluster_silhouette_values,
+                              facecolor=color, edgecolor=color, alpha=0.7)
+            
+            ax1.text(-0.05, y_lower + 0.5 * size_cluster_i, str(i))
+            y_lower = y_upper + 10
+        
+        ax1.set_xlabel("Silhouette coefficient values")
+        ax1.set_ylabel("Cluster label")
+        ax1.axvline(x=silhouette_avg, color="red", linestyle="--")
+        ax1.set_yticks([])
+        ax1.set_xticks([-0.1, 0, 0.2, 0.4, 0.6, 0.8, 1])
+        ax1.set_title(f"{model_name}\n(n_clusters={n_clusters}, avg_score={silhouette_avg:.3f})")
+        
+        # Plot 2D visualization
+        ax2 = axes[1, idx]
+        
+        # Reduce to 2D for visualization
+        if features.shape[1] > 2:
+            pca = PCA(n_components=2, random_state=42)
+            features_2d = pca.fit_transform(features)
+        else:
+            features_2d = features
+        
+        colors = cm.nipy_spectral(labels.astype(float) / n_clusters)
+        ax2.scatter(features_2d[:, 0], features_2d[:, 1], marker='.', s=30, lw=0, alpha=0.7,
+                    c=colors, edgecolor='k')
+        
+        # Mark the centers
+        if hasattr(model, 'cluster_centers_'):
+            if features.shape[1] > 2:
+                centers_2d = pca.transform(model.cluster_centers_)
+            else:
+                centers_2d = model.cluster_centers_
+            
+            ax2.scatter(centers_2d[:, 0], centers_2d[:, 1], marker='o',
+                       c="white", alpha=1, s=200, edgecolor='k')
+            
+            for i, c in enumerate(centers_2d):
+                ax2.scatter(c[0], c[1], marker='$%d$' % i, alpha=1,
+                           s=50, edgecolor='k')
+        
+        ax2.set_xlabel("1st principal component")
+        ax2.set_ylabel("2nd principal component")
+        ax2.set_title(f"{model_name} - 2D Visualization")
+        
+        results[model_name] = {
+            'silhouette_avg': silhouette_avg,
+            'n_clusters': n_clusters,
+            'cluster_sizes': [np.sum(labels == i) for i in range(n_clusters)]
+        }
+    
+    plt.suptitle(f"Silhouette Analysis Comparison for {dataset_name}", fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.show()
+    
+    # Print comparison summary
+    print(f"\nSilhouette Analysis Comparison for {dataset_name}:")
+    print("-" * 60)
+    for model_name, result in results.items():
+        print(f"{model_name:20s}: {result['n_clusters']:2d} clusters, avg score: {result['silhouette_avg']:.3f}")
+    
+    return results
     
 def create_dynamic_cluster_to_style_mapping(df, model, id_to_name, scaler=None, reference_players=None):
     """
