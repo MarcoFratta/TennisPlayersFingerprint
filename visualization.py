@@ -1000,7 +1000,7 @@ def plot_silhouette_analysis(model, features, labels=None, dataset_name="Dataset
     ax2.set_xlabel(x_label)
     ax2.set_ylabel(y_label)
     
-    plt.suptitle(f"Silhouette analysis for clustering on {dataset_name} with n_clusters = {n_clusters}",
+    plt.suptitle(f"Silhouette analysis for KMeans clustering on {dataset_name} with n_clusters = {n_clusters}",
                  fontsize=14, fontweight='bold')
     
     plt.tight_layout()
@@ -1024,6 +1024,7 @@ def plot_silhouette_analysis(model, features, labels=None, dataset_name="Dataset
         'n_clusters': n_clusters,
         'cluster_sizes': [np.sum(labels == i) for i in range(n_clusters)]
     }
+
 
 def plot_silhouette_comparison(models_dict, features, dataset_name="Dataset", figsize=(20, 12)):
     """
