@@ -869,8 +869,8 @@ def plot_player_style_radar(player, df, model, scale_values=[0, 20, 40, 60, 80, 
 
     # Add labels at hexagon vertices
     for i, (angle, label) in enumerate(zip(angles, styles_order)):
-        label_x = 50 * np.cos(angle)
-        label_y = 50 * np.sin(angle)
+        label_x = (scale_values[-1]+10) * np.cos(angle)
+        label_y = (scale_values[-1]+10) * np.sin(angle)
         fig.add_annotation(
             x=label_x,
             y=label_y,
