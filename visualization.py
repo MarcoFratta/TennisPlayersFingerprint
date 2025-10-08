@@ -905,7 +905,18 @@ def plot_silhouette_analysis(model, features, labels=None, dataset_name="Dataset
         if hasattr(model, 'labels_'):
             labels = model.labels_
         elif hasattr(model, 'predict'):
-            labels = model.predict(features_array)
+            try:
+                labels = model.predict(features_array)
+            except ValueError as e:
+                if "features" in str(e) and "expecting" in str(e):
+                    print(f"Warning: Feature dimension mismatch. Model expects {getattr(model, 'n_features_in_', 'unknown')} features, but got {features_array.shape[1]}.")
+                    print("Using model.labels_ if available, otherwise cannot proceed.")
+                    if hasattr(model, 'labels_'):
+                        labels = model.labels_
+                    else:
+                        raise ValueError(f"Cannot predict labels due to feature mismatch: {e}")
+                else:
+                    raise e
         else:
             raise ValueError("Model must have 'labels_' or 'predict' method")
     
@@ -969,21 +980,27 @@ def plot_silhouette_analysis(model, features, labels=None, dataset_name="Dataset
     # Mark the centers
     if hasattr(model, 'cluster_centers_'):
         if features_array.shape[1] > 2:
-            centers_2d = pca.transform(model.cluster_centers_)
+            # Check if cluster centers have the same number of features as our current data
+            if model.cluster_centers_.shape[1] == features_array.shape[1]:
+                centers_2d = pca.transform(model.cluster_centers_)
+            else:
+                print(f"Warning: Cluster centers have {model.cluster_centers_.shape[1]} features, but current data has {features_array.shape[1]} features. Skipping center visualization.")
+                centers_2d = None
         else:
             centers_2d = model.cluster_centers_
         
-        ax2.scatter(centers_2d[:, 0], centers_2d[:, 1], marker='o',
-                   c="white", alpha=1, s=200, edgecolor='k')
-        
-        for i, c in enumerate(centers_2d):
-            ax2.scatter(c[0], c[1], marker='$%d$' % i, alpha=1,
-                       s=50, edgecolor='k')
+        if centers_2d is not None:
+            ax2.scatter(centers_2d[:, 0], centers_2d[:, 1], marker='o',
+                       c="white", alpha=1, s=200, edgecolor='k')
+            
+            for i, c in enumerate(centers_2d):
+                ax2.scatter(c[0], c[1], marker='$%d$' % i, alpha=1,
+                           s=50, edgecolor='k')
     
     ax2.set_xlabel(x_label)
     ax2.set_ylabel(y_label)
     
-    plt.suptitle(f"Silhouette analysis for KMeans clustering on {dataset_name} with n_clusters = {n_clusters}",
+    plt.suptitle(f"Silhouette analysis for clustering on {dataset_name} with n_clusters = {n_clusters}",
                  fontsize=14, fontweight='bold')
     
     plt.tight_layout()
@@ -1007,7 +1024,6 @@ def plot_silhouette_analysis(model, features, labels=None, dataset_name="Dataset
         'n_clusters': n_clusters,
         'cluster_sizes': [np.sum(labels == i) for i in range(n_clusters)]
     }
-
 
 def plot_silhouette_comparison(models_dict, features, dataset_name="Dataset", figsize=(20, 12)):
     """
