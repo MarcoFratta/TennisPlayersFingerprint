@@ -620,7 +620,127 @@ def compare_clustering_models(latent_df, fitted_models_dict, mapper, random_stat
         fig.show()
 
 
-def plot_player_style_radar(player, df, model, id_to_name=None, cluster_to_style=None, styles_order=None, title=None):
+
+def _cluster_scores_from_centroids(x_scaled, centroids_scaled, eps=1e-8):
+    """
+    Helper function to calculate cluster scores from centroids using improved distance normalization.
+    This approach handles small clusters better and provides more balanced radar plot visualization.
+
+    Args:
+        x_scaled: Scaled feature vector
+        centroids_scaled: Scaled centroids
+        eps: Small value to avoid division by zero
+
+    Returns:
+        numpy array of cluster scores (10-90 range)
+    """
+    dists = np.linalg.norm(centroids_scaled - x_scaled[None, :], axis=1)
+    
+    # Use exponential decay for better score distribution
+    # This prevents extreme compression when one cluster is very far away
+    max_dist = np.max(dists)
+    
+    if max_dist > eps:
+        # Use exponential decay: scores = base_score * exp(-decay_rate * normalized_distance)
+        # This ensures all clusters get reasonable scores even if one is very far
+        normalized_dists = dists / max_dist
+        decay_rate = 2.0  # Controls how quickly scores decrease with distance
+        
+        # Calculate scores using exponential decay
+        scores = 80 * np.exp(-decay_rate * normalized_dists) + 10
+        
+        # Ensure scores are in the 10-90 range
+        scores = np.clip(scores, 10, 90)
+    else:
+        # If all distances are very small, give equal scores
+        scores = np.full(len(dists), 50.0)
+    
+    return scores
+
+
+def _cluster_scores_from_centroids_robust(x_scaled, centroids_scaled, eps=1e-8, min_score=15, max_score=85):
+    """
+    Robust helper function to calculate cluster scores from centroids.
+    Uses percentile-based normalization to handle outliers and small clusters better.
+
+    Args:
+        x_scaled: Scaled feature vector
+        centroids_scaled: Scaled centroids
+        eps: Small value to avoid division by zero
+        min_score: Minimum score to assign (default 15)
+        max_score: Maximum score to assign (default 85)
+
+    Returns:
+        numpy array of cluster scores (min_score to max_score range)
+    """
+    dists = np.linalg.norm(centroids_scaled - x_scaled[None, :], axis=1)
+    
+    # Use percentile-based normalization to handle outliers
+    # This is more robust than min-max normalization
+    p25, p75 = np.percentile(dists, [25, 75])
+    iqr = p75 - p25
+    
+    if iqr > eps:
+        # Use IQR-based normalization with outlier handling
+        # Cap extreme distances at p75 + 1.5*IQR (like in box plots)
+        outlier_threshold = p75 + 1.5 * iqr
+        capped_dists = np.minimum(dists, outlier_threshold)
+        
+        # Normalize using the capped distances
+        min_dist = np.min(capped_dists)
+        max_dist = np.max(capped_dists)
+        
+        if max_dist > min_dist:
+            # Invert distances: closer = higher score
+            normalized = (max_dist - capped_dists) / (max_dist - min_dist)
+            scores = min_score + normalized * (max_score - min_score)
+        else:
+            scores = np.full(len(dists), (min_score + max_score) / 2)
+    else:
+        # If distances are very similar, use softmax-like approach
+        # This gives more balanced scores when clusters are close
+        softmax_scores = np.exp(-dists / (np.std(dists) + eps))
+        softmax_scores = softmax_scores / np.sum(softmax_scores)
+        scores = min_score + softmax_scores * (max_score - min_score)
+    
+    return scores
+
+
+def _cluster_scores_from_centroids_weighted(x_scaled, centroids_scaled, feature_std, eps=1e-8, temperature=1.0):
+    """
+    Calculate cluster scores using improved distance normalization with minimum threshold.
+    This prevents extreme values while maintaining relative relationships.
+
+    Args:
+        x_scaled: Scaled feature vector
+        centroids_scaled: Scaled centroids
+        feature_std: Standard deviations for feature weighting
+        eps: Small value to avoid division by zero
+        temperature: Temperature parameter for scaling
+
+    Returns:
+        numpy array of cluster scores (10-90 range)
+    """
+    dists = np.linalg.norm(centroids_scaled - x_scaled[None, :], axis=1)
+    
+    # Apply minimum threshold to avoid extreme values
+    min_threshold = 10.0  # Minimum score to ensure all clusters are visible
+    max_score = 90.0      # Maximum score to leave room for scale rings
+    
+    min_dist, max_dist = np.min(dists), np.max(dists)
+    
+    if max_dist > min_dist:
+        # Normalize to 10-90 range (closer = higher score)
+        scores = max_score - ((dists - min_dist) / (max_dist - min_dist)) * (max_score - min_threshold)
+        scores = np.maximum(scores, min_threshold)  # Ensure minimum threshold
+    else:
+        # If all distances are the same, give equal scores
+        scores = np.full(len(dists), (min_threshold + max_score) / 2)
+    
+    return scores
+
+
+def plot_player_style_radar(player, df, model, scale_values=[0, 20, 40, 60, 80, 100], id_to_name=None, cluster_to_style=None, styles_order=None, title=None, feature_std=None, temperature=0.5, scoring_method='robust'):
     """
     Create a hexagonal radar chart showing a player's style profile.
 
@@ -628,14 +748,20 @@ def plot_player_style_radar(player, df, model, id_to_name=None, cluster_to_style
         player: Player name or ID
         df: DataFrame containing player data
         model: Fitted clustering model
+        scale_values: List of scale values for the radar chart grid
         id_to_name: Dictionary mapping player IDs to names
         cluster_to_style: Dictionary mapping cluster IDs to style names
         styles_order: List defining the order of styles on the radar
         title: Custom title for the plot
+        feature_std: Standard deviations for feature weighting
+        temperature: Temperature parameter for soft clustering
+        scoring_method: Method for calculating cluster scores ('robust', 'exponential', 'weighted', 'simple')
     """
     STYLE_LABELS = ["Big Server","Serve and Volley","All Court Player","Attacking Baseliner","Solid Baseliner","Counter Puncher"]
     
     Xf = df.drop(columns=['player'], errors='ignore')
+    if feature_std is None:
+        feature_std = Xf.values.std(axis=0)
     if isinstance(player, str):
         if id_to_name is None:
             raise ValueError("id_to_name required when passing a player name")
@@ -650,8 +776,27 @@ def plot_player_style_radar(player, df, model, id_to_name=None, cluster_to_style
     xs = x
     if hasattr(model, "predict_proba"):
         p = model.predict_proba([xs])[0]
+        # Convert probabilities to radar plot values (10-90 range)
+        p = p * 80 + 10  # Scale from [0,1] to [10,90]
     elif hasattr(model, "cluster_centers_"):
-        p = _cluster_scores_from_centroids(xs, model.cluster_centers_)
+        # Choose scoring method based on parameter
+        if scoring_method == 'robust':
+            p = _cluster_scores_from_centroids_robust(xs, model.cluster_centers_)
+        elif scoring_method == 'exponential':
+            p = _cluster_scores_from_centroids(xs, model.cluster_centers_)
+        elif scoring_method == 'weighted':
+            p = _cluster_scores_from_centroids_weighted(xs, model.cluster_centers_, feature_std, temperature=temperature)
+        elif scoring_method == 'simple':
+            # Original simple method (for backward compatibility)
+            dists = np.linalg.norm(model.cluster_centers_ - xs[None, :], axis=1)
+            min_dist, max_dist = np.min(dists), np.max(dists)
+            if max_dist > min_dist:
+                p = 90 - ((dists - min_dist) / (max_dist - min_dist)) * 80
+                p = np.maximum(p, 10)
+            else:
+                p = np.full(len(dists), 50.0)
+        else:
+            raise ValueError(f"Unknown scoring_method: {scoring_method}. Choose from 'robust', 'exponential', 'weighted', 'simple'")
     else:
         raise ValueError("Unsupported model")
     k = len(p)
@@ -672,7 +817,7 @@ def plot_player_style_radar(player, df, model, id_to_name=None, cluster_to_style
     style_scores = {s:0.0 for s in styles_order}
     for i, score in enumerate(p):
         style_scores[cluster_to_style[i]] = style_scores.get(cluster_to_style[i], 0.0) + float(score)
-    values = [style_scores[s]*100.0 for s in styles_order]
+    values = [style_scores[s] for s in styles_order]  # Remove *100 since scores are already in 10-90 range
 
     # Calculate hexagonal coordinates
     n_vertices = len(styles_order)
@@ -691,8 +836,6 @@ def plot_player_style_radar(player, df, model, id_to_name=None, cluster_to_style
 
     fig = go.Figure()
 
-    # Add concentric hexagons for scale
-    scale_values = [0, 10, 20, 30, 40]
     for scale in scale_values:
         x_scale = []
         y_scale = []
@@ -776,6 +919,7 @@ def plot_player_style_radar(player, df, model, id_to_name=None, cluster_to_style
     fig.show()
 
 
+
 def _player_vector(df, player_id):
     """
     Helper function to extract player vector from DataFrame.
@@ -796,24 +940,6 @@ def _player_vector(df, player_id):
         if player_id not in df.index:
             raise ValueError("player_id not found")
         return df.loc[player_id].values
-
-
-def _cluster_scores_from_centroids(x_scaled, centroids_scaled, eps=1e-8):
-    """
-    Helper function to calculate cluster scores from centroids.
-
-    Args:
-        x_scaled: Scaled feature vector
-        centroids_scaled: Scaled centroids
-        eps: Small value to avoid division by zero
-
-    Returns:
-        numpy array of cluster scores
-    """
-    dists = np.linalg.norm(centroids_scaled - x_scaled[None, :], axis=1)
-    w = 1.0 / (dists + eps)
-    return (w / w.sum())
-
 
 def get_cluster_members(df, model, id_to_name, scaler=None):
     """
