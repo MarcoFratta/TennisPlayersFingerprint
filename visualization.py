@@ -22,6 +22,9 @@ from sklearn.preprocessing import StandardScaler
 from tensorflow.keras.utils import plot_model
 from IPython.display import Image, display
 import os
+from sklearn.metrics import silhouette_samples, silhouette_score
+from sklearn.decomposition import PCA
+import matplotlib.cm as cm
 
 
 def show_side_by_side(plot_functions, titles=None, figsize=(5, 4)):
@@ -879,7 +882,7 @@ def plot_silhouette_analysis(model, features, labels=None, dataset_name="Dataset
     
     Args:
         model: Fitted clustering model
-        features: Feature matrix used for clustering
+        features: Feature matrix used for clustering (DataFrame or array)
         labels: Cluster labels (if None, will be predicted from model)
         dataset_name: Name for the plot title
         figsize: Figure size tuple (width, height)
@@ -887,16 +890,22 @@ def plot_silhouette_analysis(model, features, labels=None, dataset_name="Dataset
     Returns:
         Dictionary with silhouette analysis results
     """
-    from sklearn.metrics import silhouette_samples, silhouette_score
-    from sklearn.decomposition import PCA
-    import matplotlib.cm as cm
+    
+    # Handle DataFrame input - remove 'player' column if present
+    if hasattr(features, 'columns'):
+        if 'player' in features.columns:
+            features_array = features.drop(columns=['player']).values
+        else:
+            features_array = features.values
+    else:
+        features_array = features
     
     # Get cluster labels if not provided
     if labels is None:
         if hasattr(model, 'labels_'):
             labels = model.labels_
         elif hasattr(model, 'predict'):
-            labels = model.predict(features)
+            labels = model.predict(features_array)
         else:
             raise ValueError("Model must have 'labels_' or 'predict' method")
     
@@ -904,8 +913,8 @@ def plot_silhouette_analysis(model, features, labels=None, dataset_name="Dataset
     n_clusters = len(np.unique(labels))
     
     # Calculate silhouette scores
-    silhouette_avg = silhouette_score(features, labels)
-    sample_silhouette_values = silhouette_samples(features, labels)
+    silhouette_avg = silhouette_score(features_array, labels)
+    sample_silhouette_values = silhouette_samples(features_array, labels)
     
     # Create the plot
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
@@ -943,13 +952,13 @@ def plot_silhouette_analysis(model, features, labels=None, dataset_name="Dataset
     
     # Plot 2: The clustered data
     # Reduce to 2D for visualization
-    if features.shape[1] > 2:
+    if features_array.shape[1] > 2:
         pca = PCA(n_components=2, random_state=42)
-        features_2d = pca.fit_transform(features)
+        features_2d = pca.fit_transform(features_array)
         x_label = f"1st principal component (explained variance: {pca.explained_variance_ratio_[0]:.2f})"
         y_label = f"2nd principal component (explained variance: {pca.explained_variance_ratio_[1]:.2f})"
     else:
-        features_2d = features
+        features_2d = features_array
         x_label = "Feature space for the 1st feature"
         y_label = "Feature space for the 2nd feature"
     
@@ -959,7 +968,7 @@ def plot_silhouette_analysis(model, features, labels=None, dataset_name="Dataset
     
     # Mark the centers
     if hasattr(model, 'cluster_centers_'):
-        if features.shape[1] > 2:
+        if features_array.shape[1] > 2:
             centers_2d = pca.transform(model.cluster_centers_)
         else:
             centers_2d = model.cluster_centers_
@@ -1109,6 +1118,7 @@ def plot_silhouette_comparison(models_dict, features, dataset_name="Dataset", fi
         print(f"{model_name:20s}: {result['n_clusters']:2d} clusters, avg score: {result['silhouette_avg']:.3f}")
     
     return results
+   
     
 def create_dynamic_cluster_to_style_mapping(df, model, id_to_name, scaler=None, reference_players=None):
     """
