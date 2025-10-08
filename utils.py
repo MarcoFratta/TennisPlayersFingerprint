@@ -122,69 +122,6 @@ def encode_dataset_to_latent_space(encoder_model, df_scaled, scaler=None):
     latent_df['player'] = player_ids
     return latent_df, scaler
 
-
-def fit_optimized_kmeans(latent_df, n_clusters, init_method='k-means++', n_init=10, max_iter=300, random_state=42):
-    """
-    Fit KMeans with optimized initialization strategies.
-    
-    Args:
-        latent_df: DataFrame with latent features and 'player' column
-        n_clusters: Number of clusters
-        init_method: Initialization method ('k-means++', 'k-means||', or 'random')
-        n_init: Number of times the algorithm is run with different centroid seeds
-        max_iter: Maximum number of iterations
-        random_state: Random seed for reproducibility
-        
-    Returns:
-        Dictionary containing:
-        - 'model': Fitted KMeans model
-        - 'labels': Cluster labels
-        - 'centroids': Cluster centroids as DataFrame
-        - 'inertia': Sum of squared distances of samples to their closest cluster center
-        - 'n_iter': Number of iterations run
-        - 'features': Features used for clustering (without player column)
-        - 'player_ids': Player IDs
-    """
-    # Separate features and player IDs
-    if 'player' in latent_df.columns:
-        player_ids = latent_df['player'].values
-        features = latent_df.drop(columns=['player']).values
-    else:
-        player_ids = latent_df.index.values
-        features = latent_df.values
-    
-    # Configure KMeans with optimized parameters
-    kmeans = KMeans(
-        n_clusters=n_clusters,
-        init=init_method,
-        n_init=n_init,
-        max_iter=max_iter,
-        random_state=random_state,
-        algorithm='lloyd'  # Use Lloyd's algorithm for better performance
-    )
-    
-    # Fit the model
-    labels = kmeans.fit_predict(features)
-    
-    # Create centroids DataFrame
-    feature_names = latent_df.drop(columns=['player']).columns if 'player' in latent_df.columns else latent_df.columns
-    centroids = pd.DataFrame(
-        kmeans.cluster_centers_, 
-        columns=feature_names,
-        index=[f"cluster_{i}" for i in range(n_clusters)]
-    )
-    
-    return {
-        'model': kmeans,
-        'labels': labels,
-        'centroids': centroids,
-        'inertia': kmeans.inertia_,
-        'n_iter': kmeans.n_iter_,
-        'features': features,
-        'player_ids': player_ids
-    }
-
-
 def evaluate_clustering_metrics(features, labels):
     """
     Evaluate clustering quality using multiple metrics.
